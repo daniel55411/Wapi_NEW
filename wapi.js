@@ -492,7 +492,9 @@ window.WAPI.loadEarlierMessagesTillDate = function (id, lastMessage, done) {
         if (found.msgs.models[0].t > lastMessage) {
             found.loadEarlierMsgs().then(x);
         } else {
-            done();
+            if (done !== undefined) {
+                done();
+            }
         }
     };
     x();
@@ -582,6 +584,16 @@ window.WAPI.getMe = function (done) {
     return rawMe.all;
 };
 
+window.WAPI.getMyId = function(done) {
+    let phone = window.Store.Conn.me._serialized;
+
+    if (done !== undefined) {
+        done(phone);
+    }
+
+    return phone;
+};
+
 window.WAPI.isLoggedIn = function (done) {
     // Contact always exists when logged in
     const isLogged = window.Store.Contact && window.Store.Contact.checksum !== undefined;
@@ -602,6 +614,62 @@ window.WAPI.processMessageObj = function (messageObj, includeMe, includeNotifica
         return WAPI._serializeMessageObj(messageObj);
     }
     return;
+};
+
+window.WAPI.getFirstMessagesInChat = function(chatId, includeMe, includeNotifications, limit,
+                                              lastReadMessageId, lastReadMessageTimestamp, done) {
+    const chat = WAPI.getChat(chatId);
+    if (chat === undefined) {
+        if (done !== undefined) {
+            done(null);
+        }
+        return null;
+    }
+
+    const foundLast = window.WAPI.getMessageById(lastReadMessageId) !== false;
+    const messages = chat.msgs._models;
+
+    if (messages[0].t > lastReadMessageTimestamp) {
+        if (done !== undefined) {
+            done([]);
+        }
+
+        return [];
+    }
+
+    let skip = true;
+    const output = [];
+
+    for (let i = 0; i < messages.length; i++) {
+        if (output.length >= limit) {
+            break;
+        }
+
+        const message = messages[i];
+        if (skip) {
+            if (foundLast && message.id._serialized === lastReadMessageId
+                || !foundLast && message.t >= lastReadMessageTimestamp) {
+                skip = false;
+            }
+
+            continue;
+        }
+
+        if (message.isSentByMe && !includeMe || message.isRevoked) {
+            continue;
+        }
+
+        let serialized = window.WAPI.processMessageObj(message, includeMe, includeNotifications);
+        if (serialized) {
+            output.push(serialized);
+        }
+    }
+
+    if (done !== undefined) {
+        done(output);
+    }
+
+    return output;
 };
 
 window.WAPI.getAllMessagesInChat = function (id, includeMe, includeNotifications, done) {
@@ -1074,9 +1142,9 @@ window.WAPI.deleteMessage = function (chatId, messageArray, revoke=false, done) 
     }
 
     if (revoke) {
-        conversation.sendRevokeMsgs(messageArray, conversation);    
+        conversation.sendRevokeMsgs(messageArray, conversation);
     } else {
-        conversation.sendDeleteMsgs(messageArray, conversation);    
+        conversation.sendDeleteMsgs(messageArray, conversation);
     }
 
 
@@ -1308,7 +1376,7 @@ window.WAPI.sendVCard = function (chatId, vcard) {
     chat.addAndSendMsg(tempMsg);
 };
 /**
- * Block contact 
+ * Block contact
  * @param {string} id '000000000000@c.us'
  * @param {*} done - function - Callback function to be called when a new message arrives.
  */
@@ -1323,7 +1391,7 @@ window.WAPI.contactBlock = function (id, done) {
     return false;
 }
 /**
- * unBlock contact 
+ * unBlock contact
  * @param {string} id '000000000000@c.us'
  * @param {*} done - function - Callback function to be called when a new message arrives.
  */
